@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
+#include <sqlite3.h>
+
 GtkWidget *window;
 GtkWidget *grid;
 GtkWidget *button;
@@ -7,6 +9,15 @@ GtkWidget *edit_Field;
 GtkWidget *label;
 GtkWidget *list_view;
 GtkListStore *list_store;
+
+// Setup tree variables
+GtkTreeStore *store;
+GtkWidget *tree;
+GtkTreeViewColumn *column;
+GtkCellRenderer *renderer;
+
+GtkTreeIter iter1;  /* Parent iter */
+GtkTreeIter iter2;  /* Child iter  */
 
 enum
 {
@@ -16,10 +27,58 @@ enum
    N_COLUMNS
 };
 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * 
+ *  DB SETUP
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+sqlite3 *db;
+char *zErrMsg = 0;
+int rc;
+char *sql;
+const char* data = "Callback function called";
+
+static void closeDB()
+{
+  sqlite3_close(db);
+  gtk_label_set_text((GtkLabel *) label, "Database closed succesfully!");
+}
+
+static int getCatsCallback(void *data, int argc, char **argv, char **azColName){
+  int i;
+  for(i = 0; i<argc; i++){
+    gtk_tree_store_append (store, &iter1, NULL);  /* Acquire a top-level iterator */
+    gtk_tree_store_set (store, &iter1,
+                        TITLE_COLUMN, "",
+                        CATEGORY_COLUMN, argv[i],
+                        DIETARRY_COLUMN, "",
+                        -1);
+  }
+  return 0;
+}
+
+static void getCats()
+{
+    sql = "SELECT name FROM categories;";
+    rc = sqlite3_exec(db, sql, getCatsCallback, (void*)data, &zErrMsg);
+
+    if( rc != SQLITE_OK ) {
+        fprintf(stderr, "SQL error: %s\n", zErrMsg);
+        sqlite3_free(zErrMsg);
+    } else {
+        gtk_label_set_text((GtkLabel *) label, "Data retrived succesfully!");
+    }
+}
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * 
+ *  LIST VIEW SETUP 
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 static void populate_tree_model (GtkTreeStore *store)
 {
-  GtkTreeIter iter1;  /* Parent iter */
-  GtkTreeIter iter2;  /* Child iter  */
 
   gtk_tree_store_append (store, &iter1, NULL);  /* Acquire a top-level iterator */
   gtk_tree_store_set (store, &iter1,
@@ -74,19 +133,17 @@ static void populate_tree_model (GtkTreeStore *store)
 }
 
 
-static void print_hello (GtkWidget *widget, gpointer data)
-{
-  gtk_label_set_text((GtkLabel *) label,"Hello World!");
-}
-
-static void print_text ()
-{
-  gtk_label_set_text((GtkLabel *) label, gtk_editable_get_text(GTK_EDITABLE(edit_Field)));
-}
-
+/* * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * 
+ *  MAIN ACTIVATE LOOP SETUP 
+ *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 static void activate (GtkApplication *app, gpointer user_data)
 {
+
+  rc = sqlite3_open("src/database.db", &db);
+
   /* create a new window, and set its title */
   window = gtk_application_window_new(app);
   gtk_window_set_title(GTK_WINDOW(window), "Recipe Organizer");
@@ -102,37 +159,33 @@ static void activate (GtkApplication *app, gpointer user_data)
   /* Pack the container in the window */
   gtk_window_set_child (GTK_WINDOW (window), grid);
 
-   GtkTreeStore *store;
-   GtkWidget *tree;
-   GtkTreeViewColumn *column;
-   GtkCellRenderer *renderer;
-
-   /* Create a model.  We are using the store model for now, though we
-    * could use any other GtkTreeModel */
-   store = gtk_tree_store_new (N_COLUMNS,
+  /* Create a model.  We are using the store model for now, though we
+   * could use any other GtkTreeModel */
+  store = gtk_tree_store_new (N_COLUMNS,
                                G_TYPE_STRING,
                                G_TYPE_STRING,
                                G_TYPE_STRING);
 
-   /* custom function to fill the model with data */
-   populate_tree_model (store);
+  /* custom function to fill the model with data */
+  //populate_tree_model (store);
+  getCats();
 
-   /* Create a view */
-   tree = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
+  /* Create a view */
+  tree = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
 
-   /* The view now holds a reference.  We can get rid of our own
-    * reference */
-   g_object_unref (G_OBJECT (store));
+  /* The view now holds a reference.  We can get rid of our own
+   * reference */
+  g_object_unref (G_OBJECT (store));
 
-   /* Create a cell render and arbitrarily make it red for demonstration
-    * purposes */
-   renderer = gtk_cell_renderer_text_new ();
-   g_object_set (G_OBJECT (renderer),
-                 "foreground", "red",
-                 NULL);
+  /* Create a cell render and arbitrarily make it red for demonstration
+   * purposes */
+  renderer = gtk_cell_renderer_text_new ();
+  g_object_set (G_OBJECT (renderer),
+                "foreground", "red",
+                NULL);
 
    /* Create a column, associating the "text" attribute of the
-    * cell_renderer to the first column of the model */
+   * cell_renderer to the first column of the model */
    column = gtk_tree_view_column_new_with_attributes ("Category", renderer,
                                                       "text", CATEGORY_COLUMN,
                                                       NULL);

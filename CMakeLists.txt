@@ -13,6 +13,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK4 REQUIRED gtk4)
 
+    find_package(SQLite3 REQUIRED)
+    pkg_check_modules(SQLITE REQUIRED sqlite3)
+
     include_directories(${GTK4_INCLUDE_DIRS})
     link_directories(${GTK4_LIBRARY_DIRS})
     add_definitions(${GTK4_CFLAGS_OTHER})
@@ -27,6 +30,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK REQUIRED gtk4)
+
+    find_package(SQLite3 REQUIRED)
+    pkg_check_modules(SQLITE REQUIRED sqlite3)
 
     include_directories(${GTK_INCLUDE_DIRS})
     link_directories(${GTK_LIBRARY_DIRS})
