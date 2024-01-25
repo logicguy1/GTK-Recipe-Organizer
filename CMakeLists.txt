@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(GTKTutorial)
+project(RecipeOrganizer)
 
 set(CMAKE_C_STANDARD 11)
 
@@ -38,6 +38,5 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     link_directories(${GTK_LIBRARY_DIRS})
 
     # Link the target to the GTK+ libraries
-    TARGET_LINK_LIBRARIES(RecipeOrganizer ${GTK_LIBRARIES})
+    TARGET_LINK_LIBRARIES(RecipeOrganizer sqlite3 ${GTK_LIBRARIES})
 endif()
-
