@@ -3,16 +3,27 @@
 #include <stdlib.h>
 #include <gtk/gtk.h>
 #include <sqlite3.h>
+#include <string.h>
+#include <ctype.h>
 
 GtkWidget *window;
+GtkWidget *scrollable;
 GtkWidget *grid;
 GtkWidget *innerGrid;
+GtkWidget *ingredientGrid;
+GtkWidget *methodGrid;
 GtkWidget *button;
 GtkWidget *edit_Field;
 GtkWidget *label;
 GtkWidget *list_view;
 GtkListStore *list_store;
 GtkWidget *title;
+GtkWidget *method;
+GtkWidget *ingredientsLabel;
+GtkWidget *methodsLabel;
+GtkWidget *prevBox;
+int ingredientCountOld = 0;
+int methodCountOld = 0;
 
 // Setup tree variables
 GtkTreeStore *store;
@@ -23,6 +34,61 @@ GtkCellRenderer *renderer;
 GtkTreeIter iter1;  /* Parent iter */
 GtkTreeIter iter2;  /* Child iter  */
 
+
+// Function to insert text into the text view
+void insert_text(GtkTextBuffer *buffer, const gchar *text) {
+    GtkTextIter iter;
+
+    // Get the end iterator of the buffer
+    gtk_text_buffer_get_end_iter(buffer, &iter);
+
+    // Insert the text at the end of the buffer
+    gtk_text_buffer_insert(buffer, &iter, text, -1);
+}
+
+char* insert_newlines(const char* input_string, int max_width) {
+    // Calculate the length of the input string
+    size_t input_length = strlen(input_string);
+
+    // Allocate memory for the new string
+    char* new_string = (char*)malloc(input_length * 2); // Maximum possible length
+    if (new_string == NULL) {
+        // Memory allocation failed
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+
+    size_t input_index = 0; // Index to track position in the input string
+    size_t output_index = 0; // Index to track position in the new string
+
+    while (input_index < input_length) {
+        // Copy characters until max_width or end of string is reached
+        int char_count = 0;
+        while (input_index < input_length && char_count < max_width) {
+            new_string[output_index++] = input_string[input_index++];
+            char_count++;
+        }
+
+        // If there are more characters to process and the last character copied wasn't a whitespace,
+        // backtrack to find the nearest whitespace
+        if (input_index < input_length && !isspace(new_string[output_index - 1])) {
+            while (output_index > 0 && !isspace(new_string[output_index - 1])) {
+                output_index--;
+                input_index--;
+            }
+        }
+
+        // Insert newline character if there are more characters to process
+        if (input_index < input_length) {
+            new_string[output_index++] = '\n';
+        }
+    }
+
+    // Null-terminate the new string
+    new_string[output_index] = '\0';
+
+    return new_string;
+}
 
 enum
 {
@@ -47,12 +113,12 @@ const char* data = "Callback function called";
 static void closeDB()
 {
   sqlite3_close(db);
-  printf("Database closed succesfully!");
+  // printf("Database closed succesfully!");
 }
 
 static int getRecipesCallback(void *data, int argc, char **argv, char **azColName){
   for (int i = 0; i < argc; i++) {
-    printf("argv[%d]: %s\n", i, argv[i]);
+    // printf("argv[%d]: %s\n", i, argv[i]);
   }
 
   gtk_tree_store_append (store, &iter2, &iter1);  /* Acquire a child iterator */
@@ -119,10 +185,52 @@ static void getCats()
   }
 }
 
+
+static int getIngredientsCallback(void *data, int argc, char **argv, char **azColName){
+  for (int i = 0; i < argc; i++) {
+    // printf("argv[%d]: %s\n", i, argv[i]);
+  }
+  GtkWidget* box;
+  box = gtk_check_button_new_with_label(insert_newlines(argv[1], 120));
+  gtk_grid_attach(GTK_GRID(ingredientGrid), box, 1, ingredientCountOld, 2, 1);
+  gtk_widget_add_css_class(box, "ingredient");
+  ingredientCountOld++;
+  return 0;
+}
+
+
+static int getMethodsCallback(void *data, int argc, char **argv, char **azColName){
+  for (int i = 0; i < argc; i++) {
+    // printf("argv[%d]: %s\n", i, argv[i]);
+  }
+  GtkWidget* box;
+  box = gtk_check_button_new_with_label(insert_newlines(argv[1], 120));
+  gtk_grid_attach(GTK_GRID(methodGrid), box, 1, methodCountOld, 2, 1);
+
+  if (methodCountOld == 0) {
+    prevBox = box;
+    gtk_check_button_set_active(box, true);
+  } else {
+    gtk_check_button_set_group(box, prevBox);
+  }
+
+  methodCountOld++;
+  return 0;
+}
+
 static int getSpecificRecipeCallback(void *data, int argc, char **argv, char **azColName){
   for (int i = 0; i < argc; i++) {
-    printf("argv[%d]: %s\n", i, argv[i]);
+    // printf("argv[%d]: %s\n", i, argv[i]);
   }
+
+  for (int i = 0; i < ingredientCountOld; i++) {
+    gtk_grid_remove_row(GTK_GRID(ingredientGrid), 0);
+  }
+  ingredientCountOld = 0;
+  for (int i = 0; i < methodCountOld; i++) {
+    gtk_grid_remove_row(GTK_GRID(methodGrid), 0);
+  }
+  methodCountOld = 0;
 
   // gtk_label_set_text((GtkLabel *) title, argv[1]);
   const char *template = "<span size='x-large'>%s</span>";
@@ -131,6 +239,34 @@ static int getSpecificRecipeCallback(void *data, int argc, char **argv, char **a
   // Format the SQL query string with the row and column offsets
   snprintf(formatted, sizeof(formatted), template, argv[1]);
   gtk_label_set_markup(GTK_LABEL(title), formatted);
+
+  // Define the SQL query template with placeholders
+  const char *sql_template = "SELECT id, name FROM ingredients WHERE recipe_id = %s ORDER BY name;";
+  char formatted_sql[286]; // Define buffer to hold the formatted SQL string
+  snprintf(formatted_sql, sizeof(formatted_sql), sql_template, argv[0]);
+  printf(formatted_sql);
+  rc = sqlite3_exec(db, formatted_sql, getIngredientsCallback, (void*)data, &zErrMsg);
+
+  if( rc != SQLITE_OK ) {
+    fprintf(stderr, "SQL error: %s\n", zErrMsg);
+    sqlite3_free(zErrMsg);
+  } else {
+    printf("Data retrived succesfully!\n");
+  }
+  
+  // Define the SQL query template with placeholders
+  const char *sql_template2 = "SELECT id, name FROM methods WHERE recipe_id = %s ORDER BY id;";
+  char formatted_sql2[286]; // Define buffer to hold the formatted SQL string
+  snprintf(formatted_sql2, sizeof(formatted_sql2), sql_template2, argv[0]);
+  printf(formatted_sql);
+  rc = sqlite3_exec(db, formatted_sql2, getMethodsCallback, (void*)data, &zErrMsg);
+
+  if( rc != SQLITE_OK ) {
+    fprintf(stderr, "SQL error: %s\n", zErrMsg);
+    sqlite3_free(zErrMsg);
+  } else {
+    printf("Data retrived succesfully!\n");
+  }
 
   return 0;
 }
@@ -199,6 +335,7 @@ static void
 activate_cb(GtkTreeView* tree_view, gpointer user_data)
 {
   printf("Working\n");
+
   GtkTreePath *path;
   GtkTreeViewColumn *focus_column;
 
@@ -217,15 +354,20 @@ activate_cb(GtkTreeView* tree_view, gpointer user_data)
       g_print("Row: %d, Column: %d\n", row, column);
 
       // Define the SQL query template with placeholders
-      const char *sql_template = "SELECT id, name FROM recipe WHERE recipe.category = (SELECT id FROM categories ORDER BY name LIMIT 1 OFFSET %d) ORDER BY name LIMIT 1 OFFSET %d;";
+      const char *sql_template = "SELECT id, name, method \
+FROM recipe \
+WHERE recipe.category = ( \
+    SELECT id \
+    FROM categories \
+    ORDER BY name \
+    LIMIT 1 \
+    OFFSET %d \
+) \
+ORDER BY name \
+LIMIT 1 \
+OFFSET %d;";
       char formatted_sql[286]; // Define buffer to hold the formatted SQL string
-
-      // Format the SQL query string with the row and column offsets
       snprintf(formatted_sql, sizeof(formatted_sql), sql_template, row, column);
-
-      // Print the formatted SQL query
-      printf("Formatted SQL Query: %s\n", formatted_sql);
-
       rc = sqlite3_exec(db, formatted_sql, getSpecificRecipeCallback, (void*)data, &zErrMsg);
 
       if( rc != SQLITE_OK ) {
@@ -237,11 +379,7 @@ activate_cb(GtkTreeView* tree_view, gpointer user_data)
     }
 
     g_strfreev(tokens);
-
-    // Free the path since it's been used
     g_free(path_string);
-
-    // Free the path since it's been used
     gtk_tree_path_free(path);
   } else {
     g_print("Cursor is not set.\n");
@@ -265,8 +403,16 @@ static void activate (GtkApplication *app, gpointer user_data)
   /* create a new window, and set its title */
   window = gtk_application_window_new(app);
   gtk_window_set_title(GTK_WINDOW(window), "Recipe Organizer");
-  gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
+  gtk_window_set_default_size(GTK_WINDOW(window), 1300, 800);
   gtk_window_set_resizable(GTK_WINDOW(window), false);
+
+  GtkCssProvider *cssProvider = gtk_css_provider_new();
+  GdkDisplay *display = gdk_display_get_default();
+
+  gtk_css_provider_load_from_path(cssProvider, "src/theme.css");
+  gtk_style_context_add_provider_for_display(display, 
+                                 GTK_STYLE_PROVIDER(cssProvider), 
+                                 GTK_STYLE_PROVIDER_PRIORITY_USER);
 
   /* Here we construct the container that is going pack our buttons */
   grid = gtk_grid_new();
@@ -326,12 +472,46 @@ static void activate (GtkApplication *app, gpointer user_data)
 
   innerGrid = gtk_grid_new();
   gtk_grid_set_row_spacing(GTK_GRID (innerGrid), 6);
+  gtk_widget_set_margin_top(innerGrid, 15);
+  gtk_widget_set_margin_start(innerGrid, 15);
+  gtk_widget_set_margin_bottom(innerGrid, 15);
 
-  gtk_grid_attach(GTK_GRID(grid), innerGrid, 5, 0, 1, 1);
+  scrollable = gtk_scrolled_window_new();
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrollable), innerGrid);
+  gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(scrollable), 800);
+  gtk_scrolled_window_set_min_content_width(GTK_SCROLLED_WINDOW(scrollable), 800);
+  gtk_grid_attach(GTK_GRID(grid), scrollable, 5, 0, 1, 1);
+
+  ingredientGrid = gtk_grid_new();
+  gtk_grid_set_row_spacing(GTK_GRID(ingredientGrid), 0);
+  gtk_grid_attach(GTK_GRID(innerGrid), ingredientGrid, 1, 3, 1, 1);
+
+  ingredientsLabel = gtk_label_new(NULL);
+  gtk_label_set_markup(GTK_LABEL(ingredientsLabel), "<span size='larger'>Ingredients</span>");
+  gtk_label_set_xalign(GTK_LABEL(ingredientsLabel), 0);
+  gtk_grid_attach(GTK_GRID(innerGrid), ingredientsLabel, 1, 2, 1, 1);
+
+  methodGrid = gtk_grid_new();
+  gtk_grid_set_row_spacing(GTK_GRID(methodGrid), 0);
+  gtk_grid_attach(GTK_GRID(innerGrid), methodGrid, 1, 5, 1, 1);
+
+  methodsLabel = gtk_label_new(NULL);
+  gtk_label_set_markup(GTK_LABEL(methodsLabel), "<span size='larger'>Method</span>");
+  gtk_label_set_xalign(GTK_LABEL(methodsLabel), 0);
+  gtk_grid_attach(GTK_GRID(innerGrid), methodsLabel, 1, 4, 1, 1);
 
   title = gtk_label_new(NULL);
   gtk_label_set_markup(GTK_LABEL(title), "<span size='x-large'>No recipe chosen</span>");
-  gtk_grid_attach(GTK_GRID(innerGrid), title, 1, 1, 1, 1);
+  gtk_label_set_xalign(GTK_LABEL(title), 0);
+  gtk_grid_attach(GTK_GRID(innerGrid), title, 1, 0, 1, 1);
+
+  method = gtk_text_view_new();
+  gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(method), GTK_WRAP_WORD);
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(method));
+  insert_text(buffer, "Hello, World!\n");
+  // gtk_grid_attach(GTK_GRID(innerGrid), method, 1, 2, 4, 1);
+
+  gtk_tree_view_expand_all(GTK_TREE_VIEW(tree));
 
   gtk_window_present (GTK_WINDOW (window));
 }
